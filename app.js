@@ -8,16 +8,23 @@ const asciiOk=s=>/^[\x20-\x7E]*$/.test(s);
 const BAD_KEY='API Key 含有非法字符（如全角空格/中文引号），请重新粘贴';
 const cfg=()=>{
   const c=Object.assign({base:'https://api.deepseek.com',model:'deepseek-chat',key:'',dict:true},J('er_cfg',{}));
-  c.base=cleanBase(c.base)||'https://api.deepseek.com';c.model=cleanModel(c.model)||'deepseek-chat';c.key=cleanKey(c.key);
+  c.base=cleanBase(c.base)||'https://api.deepseek.com';c.model=modelFor(c.base,c.model)||'deepseek-chat';c.key=cleanKey(c.key);
   return c;
 };
 const PRESETS={
   deepseek:{base:'https://api.deepseek.com',model:'deepseek-chat'},
   openai:{base:'https://api.openai.com/v1',model:'gpt-4o-mini'},
   siliconflow:{base:'https://api.siliconflow.cn/v1'},
-  kimi:{base:'https://api.moonshot.cn/v1',model:'moonshot-v1-8k'},
-  'kimi-intl':{base:'https://api.moonshot.ai/v1',model:'moonshot-v1-8k'}
+  kimi:{base:'https://api.moonshot.cn/v1',model:'kimi-k2.6'},
+  'kimi-intl':{base:'https://api.moonshot.ai/v1',model:'kimi-k2.6'}
 };
+const LEGACY_MODELS=['moonshot-v1-8k'];
+function presetModels(){return new Set([...Object.values(PRESETS).map(p=>p.model).filter(Boolean),...LEGACY_MODELS])}
+function modelFor(base,model){
+  const p=PRESETS[matchPreset(base)],cur=cleanModel(model);
+  if(p&&p.model&&(!cur||presetModels().has(cur)))return p.model;
+  return cur;
+}
 let docs=J('er_docs',[]),cur=null,tab='syntax',curSent=null;
 
 // ---------- LLM ----------
@@ -57,7 +64,9 @@ async function chat(c,messages,maxTokens){
   }
   let data;try{data=await r.json()}catch{throw reqFail('请求失败（响应无效）',url,model)}
   if(!data?.choices?.length)throw reqFail('请求失败（响应无效）',url,model);
-  return (data.choices[0].message?.content||'').trim();
+  const msg=data.choices[0].message||{},raw=msg.content;
+  const text=typeof raw==='string'?raw:Array.isArray(raw)?raw.map(p=>typeof p==='string'?p:(p&&typeof p.text==='string'?p.text:'')).join(''):'';
+  return text.trim();
 }
 async function llm(prompt,sys){
   const c=cfg(),ck='er_c_'+hash(c.model+'|'+sys+'|'+prompt),hit=LS.getItem(ck);if(hit)return hit;
@@ -190,7 +199,9 @@ function matchPreset(base){const b=cleanBase(base).toLowerCase();return Object.k
 function readForm(){
   const base=cleanBase($('#sBase').value)||'https://api.deepseek.com';
   let model=cleanModel($('#sModel').value);
-  if(!model&&$('#sPreset').value!=='siliconflow')model='deepseek-chat';
+  const chosen=PRESETS[$('#sPreset').value];
+  if(!model&&chosen&&chosen.model)model=chosen.model;
+  else if(!model&&$('#sPreset').value!=='siliconflow')model='deepseek-chat';
   const c={base,model,key:cleanKey($('#sKey').value),dict:$('#sDict').checked};
   $('#sBase').value=c.base;$('#sKey').value=c.key;if(model)$('#sModel').value=model;
   return c;
@@ -201,8 +212,8 @@ function fillSet(){
 $('#sPreset').onchange=()=>{
   const p=PRESETS[$('#sPreset').value];$('#setMsg').textContent='';if(!p)return;
   $('#sBase').value=p.base;
-  if(p.model)$('#sModel').value=p.model;
-  else if(/^(deepseek-chat|gpt-4o-mini|moonshot-v1-8k)$/.test($('#sModel').value))$('#sModel').value='';
+  const cur=cleanModel($('#sModel').value);
+  if(p.model&&(!cur||presetModels().has(cur)))$('#sModel').value=p.model;
 };
 $('#sBase').oninput=()=>{$('#sPreset').value=matchPreset($('#sBase').value)};
 $('#btnSet').onclick=()=>{fillSet();$('#dlgSet').showModal()};
