@@ -2,7 +2,10 @@
 const $=s=>document.querySelector(s),LS=localStorage;
 const J=(k,d)=>{try{return JSON.parse(LS.getItem(k))??d}catch{return d}},S=(k,v)=>LS.setItem(k,JSON.stringify(v));
 const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const cleanBase=s=>String(s||'').replace(/\s+/g,'').replace(/\/+$/,''),cleanKey=s=>String(s||'').replace(/\s+/g,''),cleanModel=s=>String(s||'').trim();
+function stripJunk(s){return String(s||'').replace(/[\u00AD\u200B-\u200D\u200E\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF\u180E]/g,'').replace(/[\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]/g,'')}
+const cleanBase=s=>stripJunk(s).replace(/\s+/g,'').replace(/\/+$/,''),cleanKey=s=>stripJunk(s).replace(/\s+/g,''),cleanModel=s=>stripJunk(s).trim();
+const asciiOk=s=>/^[\x20-\x7E]*$/.test(s);
+const BAD_KEY='API Key 含有非法字符（如全角空格/中文引号），请重新粘贴';
 const cfg=()=>{
   const c=Object.assign({base:'https://api.deepseek.com',model:'deepseek-chat',key:'',dict:true},J('er_cfg',{}));
   c.base=cleanBase(c.base)||'https://api.deepseek.com';c.model=cleanModel(c.model)||'deepseek-chat';c.key=cleanKey(c.key);
@@ -26,23 +29,34 @@ function endpoint(base){
   if(!/\/v\d+$/i.test(b))b+='/v1';
   return b+'/chat/completions';
 }
-function reqFail(msg,url,model){return new Error(msg+'：'+url+'（模型 '+model+'）')}
+function reqFail(msg,url,model,err){
+  let s=msg+'：'+url+'（模型 '+model+'）';
+  if(err)s+=' '+(err.name||'Error')+': '+(err.message||err);
+  return new Error(s);
+}
 async function chat(c,messages,maxTokens){
-  if(!c.key)throw new Error('请先在「设置」中填写 API Key');
-  if(!c.model)throw new Error('请填写模型名');
-  const url=endpoint(c.base);
+  const key=cleanKey(c.key),base=cleanBase(c.base),model=cleanModel(c.model);
+  if(!key)throw new Error('请先在「设置」中填写 API Key');
+  if(!model)throw new Error('请填写模型名');
+  if(!asciiOk(key))throw new Error(BAD_KEY);
+  if(!asciiOk(base))throw new Error('Base URL 含有非法字符（如全角空格/中文引号），请重新粘贴');
+  const url=endpoint(base);
+  const ac=new AbortController(),timer=setTimeout(()=>ac.abort(),60000);
   let r;
   try{
-    const body={model:c.model,temperature:0.2,messages};
+    const body={model,temperature:0.2,messages};
     if(maxTokens)body.max_tokens=maxTokens;
-    r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+c.key},body:JSON.stringify(body)});
-  }catch{throw reqFail('网络或跨域失败',url,c.model)}
+    r=await fetch(url,{method:'POST',credentials:'omit',signal:ac.signal,headers:{'Content-Type':'application/json',Authorization:'Bearer '+key},body:JSON.stringify(body)});
+  }catch(e){
+    if(e&&e.name==='AbortError')throw reqFail('请求超时',url,model);
+    throw reqFail('网络或跨域失败',url,model,e);
+  }finally{clearTimeout(timer)}
   if(!r.ok){
     const map={401:'API Key 无效或与 Base URL 不匹配，请检查设置',402:'余额不足',404:'接口地址或模型名不存在',429:'请求过多'};
-    throw reqFail(map[r.status]||('请求失败（'+r.status+'）'),url,c.model);
+    throw reqFail(map[r.status]||('请求失败（'+r.status+'）'),url,model);
   }
-  let data;try{data=await r.json()}catch{throw reqFail('请求失败（响应无效）',url,c.model)}
-  if(!data?.choices?.length)throw reqFail('请求失败（响应无效）',url,c.model);
+  let data;try{data=await r.json()}catch{throw reqFail('请求失败（响应无效）',url,model)}
+  if(!data?.choices?.length)throw reqFail('请求失败（响应无效）',url,model);
   return (data.choices[0].message?.content||'').trim();
 }
 async function llm(prompt,sys){
