@@ -233,6 +233,13 @@ $('#btnTest').onclick=async()=>{
   finally{btn.disabled=false}
 };
 $('#clrCache').onclick=()=>{clearCache();alert('已清除缓存')};
+$('#btnReload').onclick=async()=>{
+  try{
+    if(navigator.serviceWorker){const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.unregister()))}
+    if(window.caches){const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)))}
+  }catch{}
+  location.href=location.pathname+'?_='+Date.now();
+};
 
 // ---------- boot ----------
 (function(){const q=new URLSearchParams(location.search),t=q.get('text');
