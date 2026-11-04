@@ -41,41 +41,55 @@ function reqFail(msg,url,model,err){
   if(err)s+=' '+(err.name||'Error')+': '+(err.message||err);
   return new Error(s);
 }
+let chatQ=Promise.resolve();
+function enqueueChat(fn){const run=chatQ.then(fn,fn);chatQ=run.then(()=>{},()=>{});return run}
+function moonshotHost(base){try{const h=new URL(base).hostname;return h==='api.moonshot.cn'||h==='api.moonshot.ai'}catch{return false}}
+function retryWait(msg){const m=/after\s+(\d+)\s+seconds?/i.exec(String(msg||''));return ((m&&+m[1])||20)*1000}
+function apiText(j){const e=j&&j.error;return (typeof e==='string'?e:e&&e.message)||j&&j.message||''}
 async function chat(c,messages,maxTokens){
-  const test=!!(maxTokens&&typeof maxTokens==='object'&&maxTokens.test);
+  const opt=maxTokens&&typeof maxTokens==='object'?maxTokens:null;
+  const test=!!(opt&&opt.test),onStart=opt&&opt.onStart;
   const limit=typeof maxTokens==='number'&&maxTokens>=64?maxTokens:0;
   const key=cleanKey(c.key),base=cleanBase(c.base),model=cleanModel(c.model);
   if(!key)throw new Error('请先在「设置」中填写 API Key');
   if(!model)throw new Error('请填写模型名');
   if(!asciiOk(key))throw new Error(BAD_KEY);
   if(!asciiOk(base))throw new Error('Base URL 含有非法字符（如全角空格/中文引号），请重新粘贴');
-  const url=endpoint(base);
-  const ac=new AbortController(),timer=setTimeout(()=>ac.abort(),60000);
-  let r;
-  try{
-    const body={model,messages};
-    if(limit)body.max_tokens=limit;
-    r=await fetch(url,{method:'POST',credentials:'omit',signal:ac.signal,headers:{'Content-Type':'application/json',Authorization:'Bearer '+key},body:JSON.stringify(body)});
-  }catch(e){
-    if(e&&e.name==='AbortError')throw reqFail('请求超时',url,model);
-    throw reqFail('网络或跨域失败',url,model,e);
-  }finally{clearTimeout(timer)}
-  if(!r.ok){
-    let apiMsg='';
-    try{const j=await r.json();const e=j&&j.error;apiMsg=(typeof e==='string'?e:e&&e.message)||j&&j.message||''}catch{}
-    const map={401:'API Key 无效或与 Base URL 不匹配，请检查设置',402:'余额不足',404:'接口地址或模型名不存在',429:'请求过多'};
-    const friendly=map[r.status]||('请求失败（'+r.status+'）');
-    throw reqFail(apiMsg?friendly+' — '+apiMsg:friendly,url,model);
-  }
-  let data;try{data=await r.json()}catch{if(test)return '';throw reqFail('请求失败（响应无效）',url,model)}
-  if(!data?.choices?.length){if(test)return '';throw reqFail('请求失败（响应无效）',url,model)}
-  const msg=data.choices[0].message||{},raw=msg.content;
-  const text=typeof raw==='string'?raw:Array.isArray(raw)?raw.map(p=>typeof p==='string'?p:(p&&typeof p.text==='string'?p.text:'')).join(''):'';
-  return text.trim();
+  return enqueueChat(()=>chatQueued({key,base,model,messages,limit,test,onStart}));
 }
-async function llm(prompt,sys){
+async function chatQueued(o){
+  if(o.onStart)o.onStart();
+  const url=endpoint(o.base);
+  for(let attempt=0;attempt<6;attempt++){
+    const ac=new AbortController(),timer=setTimeout(()=>ac.abort(),120000);
+    let r;
+    try{
+      const body={model:o.model,messages:o.messages};
+      if(moonshotHost(o.base))body.thinking={type:'disabled'};
+      if(o.limit)body.max_tokens=o.limit;
+      r=await fetch(url,{method:'POST',credentials:'omit',signal:ac.signal,headers:{'Content-Type':'application/json',Authorization:'Bearer '+o.key},body:JSON.stringify(body)});
+    }catch(e){
+      if(e&&e.name==='AbortError')throw reqFail('请求超时',url,o.model);
+      throw reqFail('网络或跨域失败',url,o.model,e);
+    }finally{clearTimeout(timer)}
+    let apiMsg='';
+    if(!r.ok){try{apiMsg=apiText(await r.json())}catch{}}
+    if(r.status===429&&attempt<5){await new Promise(res=>setTimeout(res,retryWait(apiMsg)));continue}
+    if(!r.ok){
+      const map={401:'API Key 无效或与 Base URL 不匹配，请检查设置',402:'余额不足',404:'接口地址或模型名不存在',429:'请求过多'};
+      const friendly=map[r.status]||('请求失败（'+r.status+'）');
+      throw reqFail(apiMsg?friendly+' — '+apiMsg:friendly,url,o.model);
+    }
+    let data;try{data=await r.json()}catch{if(o.test)return '';throw reqFail('请求失败（响应无效）',url,o.model)}
+    if(!data?.choices?.length){if(o.test)return '';throw reqFail('请求失败（响应无效）',url,o.model)}
+    const msg=data.choices[0].message||{},raw=msg.content;
+    const text=typeof raw==='string'?raw:Array.isArray(raw)?raw.map(p=>typeof p==='string'?p:(p&&typeof p.text==='string'?p.text:'')).join(''):'';
+    return text.trim();
+  }
+}
+async function llm(prompt,sys,onStart){
   const c=cfg(),ck='er_c_'+hash(c.model+'|'+sys+'|'+prompt),hit=LS.getItem(ck);if(hit)return hit;
-  const out=await chat(c,[{role:'system',content:sys},{role:'user',content:prompt}]);
+  const out=await chat(c,[{role:'system',content:sys},{role:'user',content:prompt}],onStart?{onStart}:undefined);
   try{LS.setItem(ck,out)}catch{clearCache();try{LS.setItem(ck,out)}catch{}}
   return out;
 }
@@ -129,7 +143,7 @@ let io;
 function open(id){
   cur=docs.find(d=>d.id===id)||null;renderSel();S('er_last',id);const R=$('#reader');
   if(!cur){R.innerHTML='<div id="empty">点击「导入」粘贴英文、上传 .txt / .epub，或通过 ?text= 链接传入文本。</div>';return}
-  io&&io.disconnect();io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){io.unobserve(e.target);translate(+e.target.dataset.p)}}),{rootMargin:'300px'});
+  io&&io.disconnect();io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){io.unobserve(e.target);queueTranslate(+e.target.dataset.p)}}),{rootMargin:'300px'});
   R.innerHTML=cur.paras.map((ss,p)=>`<div class="para" data-p="${p}"><div class="en">${ss.map((s,i)=>`<span class="s" data-p="${p}" data-s="${i}">${sentHtml(p,i)}</span>`).join(' ')}</div><div class="zh" id="zh${p}">…</div></div>`).join('');
   R.querySelectorAll('.para').forEach(e=>io.observe(e));
 }
@@ -140,9 +154,19 @@ function sentHtml(p,i){
   return o+esc(t.slice(pos));
 }
 function rerenderSent(p,i){const e=document.querySelector(`.s[data-p="${p}"][data-s="${i}"]`);if(e)e.innerHTML=sentHtml(p,i)}
+const trWait=new Set();
+let trRun=false;
+function queueTranslate(p){trWait.add(p);const el=$('#zh'+p);if(el)el.textContent='排队中…';if(!trRun){trRun=true;queueMicrotask(pumpTr)}}
+async function pumpTr(){
+  try{while(trWait.size){const p=Math.min(...trWait);trWait.delete(p);await translate(p)}}
+  finally{trRun=false;if(trWait.size){trRun=true;pumpTr()}}
+}
 async function translate(p){
-  const el=$('#zh'+p);if(!el)return;el.textContent='翻译中…';
-  try{el.textContent=await llm(cur.paras[p].join(' '),SYS.tr)}catch(e){el.innerHTML=`<span class="mu">${esc(e.message)}</span> <button onclick="translate(${p})">重试</button>`}
+  const doc=cur,el=$('#zh'+p);if(!el||!doc)return;el.textContent='排队中…';
+  try{
+    const out=await llm(doc.paras[p].join(' '),SYS.tr,()=>{const n=$('#zh'+p);if(cur===doc&&n)n.textContent='翻译中…'});
+    if(cur!==doc)return;const n=$('#zh'+p);if(n)n.textContent=out;
+  }catch(e){if(cur!==doc)return;const n=$('#zh'+p);if(n)n.innerHTML=`<span class="mu">${esc(e.message)}</span> <button onclick="translate(${p})">重试</button>`}
 }
 window.translate=translate;
 async function fillSide(){
