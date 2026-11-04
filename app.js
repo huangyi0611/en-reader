@@ -42,6 +42,8 @@ function reqFail(msg,url,model,err){
   return new Error(s);
 }
 async function chat(c,messages,maxTokens){
+  const test=!!(maxTokens&&typeof maxTokens==='object'&&maxTokens.test);
+  const limit=typeof maxTokens==='number'&&maxTokens>=64?maxTokens:0;
   const key=cleanKey(c.key),base=cleanBase(c.base),model=cleanModel(c.model);
   if(!key)throw new Error('请先在「设置」中填写 API Key');
   if(!model)throw new Error('请填写模型名');
@@ -51,19 +53,22 @@ async function chat(c,messages,maxTokens){
   const ac=new AbortController(),timer=setTimeout(()=>ac.abort(),60000);
   let r;
   try{
-    const body={model,temperature:0.2,messages};
-    if(maxTokens)body.max_tokens=maxTokens;
+    const body={model,messages};
+    if(limit)body.max_tokens=limit;
     r=await fetch(url,{method:'POST',credentials:'omit',signal:ac.signal,headers:{'Content-Type':'application/json',Authorization:'Bearer '+key},body:JSON.stringify(body)});
   }catch(e){
     if(e&&e.name==='AbortError')throw reqFail('请求超时',url,model);
     throw reqFail('网络或跨域失败',url,model,e);
   }finally{clearTimeout(timer)}
   if(!r.ok){
+    let apiMsg='';
+    try{const j=await r.json();const e=j&&j.error;apiMsg=(typeof e==='string'?e:e&&e.message)||j&&j.message||''}catch{}
     const map={401:'API Key 无效或与 Base URL 不匹配，请检查设置',402:'余额不足',404:'接口地址或模型名不存在',429:'请求过多'};
-    throw reqFail(map[r.status]||('请求失败（'+r.status+'）'),url,model);
+    const friendly=map[r.status]||('请求失败（'+r.status+'）');
+    throw reqFail(apiMsg?friendly+' — '+apiMsg:friendly,url,model);
   }
-  let data;try{data=await r.json()}catch{throw reqFail('请求失败（响应无效）',url,model)}
-  if(!data?.choices?.length)throw reqFail('请求失败（响应无效）',url,model);
+  let data;try{data=await r.json()}catch{if(test)return '';throw reqFail('请求失败（响应无效）',url,model)}
+  if(!data?.choices?.length){if(test)return '';throw reqFail('请求失败（响应无效）',url,model)}
   const msg=data.choices[0].message||{},raw=msg.content;
   const text=typeof raw==='string'?raw:Array.isArray(raw)?raw.map(p=>typeof p==='string'?p:(p&&typeof p.text==='string'?p.text:'')).join(''):'';
   return text.trim();
@@ -223,7 +228,7 @@ $('#btnTest').onclick=async()=>{
   if(!c.key){msg.textContent='请先填写 API Key';return}
   if(!c.model){msg.textContent='请填写模型名';return}
   btn.disabled=true;msg.textContent='测试中…';
-  try{await chat(c,[{role:'user',content:'ping'}],1);msg.textContent='连接成功'}
+  try{await chat(c,[{role:'user',content:'ping'}],{test:true});msg.textContent='连接成功'}
   catch(e){msg.textContent=e.message}
   finally{btn.disabled=false}
 };
