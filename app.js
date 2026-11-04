@@ -11,7 +11,9 @@ const cfg=()=>{
 const PRESETS={
   deepseek:{base:'https://api.deepseek.com',model:'deepseek-chat'},
   openai:{base:'https://api.openai.com/v1',model:'gpt-4o-mini'},
-  siliconflow:{base:'https://api.siliconflow.cn/v1'}
+  siliconflow:{base:'https://api.siliconflow.cn/v1'},
+  kimi:{base:'https://api.moonshot.cn/v1',model:'moonshot-v1-8k'},
+  'kimi-intl':{base:'https://api.moonshot.ai/v1',model:'moonshot-v1-8k'}
 };
 let docs=J('er_docs',[]),cur=null,tab='syntax',curSent=null;
 
@@ -178,7 +180,7 @@ $('#sPreset').onchange=()=>{
   const p=PRESETS[$('#sPreset').value];$('#setMsg').textContent='';if(!p)return;
   $('#sBase').value=p.base;
   if(p.model)$('#sModel').value=p.model;
-  else if(/^(deepseek-chat|gpt-4o-mini)$/.test($('#sModel').value))$('#sModel').value='';
+  else if(/^(deepseek-chat|gpt-4o-mini|moonshot-v1-8k)$/.test($('#sModel').value))$('#sModel').value='';
 };
 $('#sBase').oninput=()=>{$('#sPreset').value=matchPreset($('#sBase').value)};
 $('#btnSet').onclick=()=>{fillSet();$('#dlgSet').showModal()};
