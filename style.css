@@ -15,7 +15,7 @@ main{display:flex;flex-direction:column;flex:1;min-height:0;padding-left:env(saf
 #side nav{display:flex}#side nav button{flex:1;border-radius:0;border:0;border-bottom:2px solid transparent;background:none}#side nav .on{border-color:var(--ac);color:var(--ac)}
 #sideBody{overflow:auto;padding:10px;font-size:14px;white-space:pre-wrap}
 .para{display:grid;grid-template-columns:1fr;gap:6px;padding:10px 0;border-bottom:1px dashed var(--bd)}
-.en{font-family:Georgia,"Times New Roman",serif;font-size:17px}.zh{color:var(--mu);font-size:15px}
+.en{font-family:Georgia,"Times New Roman",serif;font-size:17px}.zh{color:var(--mu);font-size:15px;overflow-wrap:anywhere}
 .s{border-radius:4px;cursor:pointer}.s.cur{background:var(--sel)}
 @media (orientation:landscape) and (min-width:700px){main{flex-direction:row}#side{width:300px;height:auto;border-top:0;border-left:1px solid var(--bd)}.para{grid-template-columns:1fr 1fr;gap:20px}}
 mark{color:inherit;border-radius:2px}mark.y{background:#ffe86a88}mark.g{background:#8ee08a88}mark.b{background:#86c5ff88}mark.p{background:#f7a0d088}mark.u{background:none;text-decoration:underline 2px var(--ac)}
@@ -24,4 +24,4 @@ mark{color:inherit;border-radius:2px}mark.y{background:#ffe86a88}mark.g{backgrou
 #pop{position:fixed;z-index:9;left:max(8px,env(safe-area-inset-left));right:max(8px,env(safe-area-inset-right));bottom:max(12px,env(safe-area-inset-bottom));max-height:45vh;overflow:auto;padding:12px;background:var(--card);border:1px solid var(--bd);border-radius:12px;box-shadow:0 6px 24px #0004;font-size:14px;white-space:pre-wrap}
 @media(min-width:700px){#pop{left:auto;width:380px}}
 dialog{width:min(92vw,520px);max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px);overflow:auto;border:1px solid var(--bd);border-radius:12px;background:var(--bg);color:var(--fg)}dialog label{display:block;margin:8px 0}dialog input:not([type=checkbox]),dialog textarea,dialog select{width:100%}
-.row{display:flex;gap:8px;flex-wrap:wrap}.mu{color:var(--mu)}#empty{color:var(--mu);padding:30px 10px}#setMsg{min-height:1.4em;margin:4px 0;white-space:pre-wrap;word-break:break-word}
+.row{display:flex;gap:8px;flex-wrap:wrap}.mu{color:var(--mu)}#empty{color:var(--mu);padding:30px 10px}#setMsg{min-height:1.4em;margin:4px 0;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}

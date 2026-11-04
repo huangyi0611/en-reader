@@ -19,22 +19,30 @@ let docs=J('er_docs',[]),cur=null,tab='syntax',curSent=null;
 
 // ---------- LLM ----------
 function hash(s){let h=5381;for(let i=0;i<s.length;i++)h=(h*33^s.charCodeAt(i))>>>0;return h.toString(36)}
-function endpoint(base){const b=cleanBase(base);return b+(/\/v\d+$/.test(b)?'':'/v1')+'/chat/completions'}
+function endpoint(base){
+  let b=cleanBase(base);
+  if(/\/chat\/completions$/i.test(b))return b;
+  b=b.replace(/(\/v\d+)(?:\1)+$/i,'$1');
+  if(!/\/v\d+$/i.test(b))b+='/v1';
+  return b+'/chat/completions';
+}
+function reqFail(msg,url,model){return new Error(msg+'：'+url+'（模型 '+model+'）')}
 async function chat(c,messages,maxTokens){
   if(!c.key)throw new Error('请先在「设置」中填写 API Key');
   if(!c.model)throw new Error('请填写模型名');
+  const url=endpoint(c.base);
   let r;
   try{
     const body={model:c.model,temperature:0.2,messages};
     if(maxTokens)body.max_tokens=maxTokens;
-    r=await fetch(endpoint(c.base),{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+c.key},body:JSON.stringify(body)});
-  }catch{throw new Error('网络或跨域失败')}
+    r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+c.key},body:JSON.stringify(body)});
+  }catch{throw reqFail('网络或跨域失败',url,c.model)}
   if(!r.ok){
-    const map={401:'API Key 无效或与 Base URL 不匹配，请检查设置',402:'余额不足',429:'请求过多'};
-    throw new Error(map[r.status]||('请求失败（'+r.status+'）'));
+    const map={401:'API Key 无效或与 Base URL 不匹配，请检查设置',402:'余额不足',404:'接口地址或模型名不存在',429:'请求过多'};
+    throw reqFail(map[r.status]||('请求失败（'+r.status+'）'),url,c.model);
   }
-  let data;try{data=await r.json()}catch{throw new Error('请求失败（响应无效）')}
-  if(!data?.choices?.length)throw new Error('请求失败（响应无效）');
+  let data;try{data=await r.json()}catch{throw reqFail('请求失败（响应无效）',url,c.model)}
+  if(!data?.choices?.length)throw reqFail('请求失败（响应无效）',url,c.model);
   return (data.choices[0].message?.content||'').trim();
 }
 async function llm(prompt,sys){
