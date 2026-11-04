@@ -1,4 +1,4 @@
-const C='en-reader-v8',F=['./','./index.html','./app.js','./app.js?v=8','./style.css','./style.css?v=8','./manifest.json','./icon.svg'];
+const C='en-reader-v9',F=['./','./index.html','./app.js','./app.js?v=9','./style.css','./style.css?v=9','./manifest.json','./icon.svg'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(F)));self.skipWaiting()});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==C).map(x=>caches.delete(x)))));self.clients.claim()});
 self.addEventListener('fetch',e=>{
