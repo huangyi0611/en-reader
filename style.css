@@ -1,9 +1,16 @@
 :root{--bg:#fff;--fg:#1d1d1f;--mu:#6b6b70;--bd:#e3e3e8;--ac:#3b6ea5;--sel:#e8f0fb;--card:#f7f7f9}
 @media(prefers-color-scheme:dark){:root{--bg:#151517;--fg:#e8e8ea;--mu:#9a9aa0;--bd:#2c2c30;--ac:#7aa7dc;--sel:#23324a;--card:#1e1e21}}
 *{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,"PingFang SC","Helvetica Neue",sans-serif}
-header{position:sticky;top:0;z-index:5;display:flex;gap:8px;align-items:center;padding:8px 12px;padding-top:max(8px,env(safe-area-inset-top));border-bottom:1px solid var(--bd);background:var(--bg)}
-header select{flex:1;min-width:0}button,select,input,textarea{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:6px 10px}
-button{cursor:pointer}main{display:flex;flex-direction:column;height:calc(100% - 52px)}
+body{display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom)}
+header{position:sticky;top:0;z-index:5;display:flex;gap:8px;align-items:center;flex:none;padding-top:max(8px,env(safe-area-inset-top));padding-right:max(4.5rem,calc(env(safe-area-inset-right) + 16px));padding-bottom:8px;padding-left:max(12px,env(safe-area-inset-left));border-bottom:1px solid var(--bd);background:var(--bg)}
+header b,header button{flex:none;white-space:nowrap}
+header select{flex:1;min-width:0}
+button,select,input,textarea{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:6px 10px}
+button{cursor:pointer}
+#btnSet{width:36px;height:36px;padding:0;display:inline-flex;align-items:center;justify-content:center}
+#btnSet svg{display:block}
+@media (orientation:landscape){header{padding-right:max(10rem,calc(env(safe-area-inset-right) + 1.5rem))}}
+main{display:flex;flex-direction:column;flex:1;min-height:0;padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
 #reader{flex:1;overflow:auto;padding:12px}#side{border-top:1px solid var(--bd);height:38vh;display:flex;flex-direction:column;background:var(--card)}
 #side nav{display:flex}#side nav button{flex:1;border-radius:0;border:0;border-bottom:2px solid transparent;background:none}#side nav .on{border-color:var(--ac);color:var(--ac)}
 #sideBody{overflow:auto;padding:10px;font-size:14px;white-space:pre-wrap}
@@ -14,7 +21,7 @@ button{cursor:pointer}main{display:flex;flex-direction:column;height:calc(100% -
 mark{color:inherit;border-radius:2px}mark.y{background:#ffe86a88}mark.g{background:#8ee08a88}mark.b{background:#86c5ff88}mark.p{background:#f7a0d088}mark.u{background:none;text-decoration:underline 2px var(--ac)}
 #hlBar{position:fixed;z-index:9;display:flex;gap:4px;padding:4px;background:var(--card);border:1px solid var(--bd);border-radius:10px;box-shadow:0 4px 16px #0003}
 .c{width:28px;height:28px;padding:0}.c.y{background:#ffe86a}.c.g{background:#8ee08a}.c.b{background:#86c5ff}.c.p{background:#f7a0d0}
-#pop{position:fixed;z-index:9;left:8px;right:8px;bottom:12px;max-height:45vh;overflow:auto;padding:12px;background:var(--card);border:1px solid var(--bd);border-radius:12px;box-shadow:0 6px 24px #0004;font-size:14px;white-space:pre-wrap}
+#pop{position:fixed;z-index:9;left:max(8px,env(safe-area-inset-left));right:max(8px,env(safe-area-inset-right));bottom:max(12px,env(safe-area-inset-bottom));max-height:45vh;overflow:auto;padding:12px;background:var(--card);border:1px solid var(--bd);border-radius:12px;box-shadow:0 6px 24px #0004;font-size:14px;white-space:pre-wrap}
 @media(min-width:700px){#pop{left:auto;width:380px}}
-dialog{width:min(92vw,520px);border:1px solid var(--bd);border-radius:12px;background:var(--bg);color:var(--fg)}dialog label{display:block;margin:8px 0}dialog input:not([type=checkbox]),dialog textarea{width:100%}
-.row{display:flex;gap:8px;flex-wrap:wrap}.mu{color:var(--mu)}#empty{color:var(--mu);padding:30px 10px}
+dialog{width:min(92vw,520px);max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px);overflow:auto;border:1px solid var(--bd);border-radius:12px;background:var(--bg);color:var(--fg)}dialog label{display:block;margin:8px 0}dialog input:not([type=checkbox]),dialog textarea,dialog select{width:100%}
+.row{display:flex;gap:8px;flex-wrap:wrap}.mu{color:var(--mu)}#empty{color:var(--mu);padding:30px 10px}#setMsg{min-height:1.4em;margin:4px 0;white-space:pre-wrap;word-break:break-word}

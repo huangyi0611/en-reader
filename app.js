@@ -2,19 +2,42 @@
 const $=s=>document.querySelector(s),LS=localStorage;
 const J=(k,d)=>{try{return JSON.parse(LS.getItem(k))??d}catch{return d}},S=(k,v)=>LS.setItem(k,JSON.stringify(v));
 const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const cfg=()=>Object.assign({base:'https://api.deepseek.com',model:'deepseek-chat',key:'',dict:true},J('er_cfg',{}));
+const cleanBase=s=>String(s||'').replace(/\s+/g,'').replace(/\/+$/,''),cleanKey=s=>String(s||'').replace(/\s+/g,''),cleanModel=s=>String(s||'').trim();
+const cfg=()=>{
+  const c=Object.assign({base:'https://api.deepseek.com',model:'deepseek-chat',key:'',dict:true},J('er_cfg',{}));
+  c.base=cleanBase(c.base)||'https://api.deepseek.com';c.model=cleanModel(c.model)||'deepseek-chat';c.key=cleanKey(c.key);
+  return c;
+};
+const PRESETS={
+  deepseek:{base:'https://api.deepseek.com',model:'deepseek-chat'},
+  openai:{base:'https://api.openai.com/v1',model:'gpt-4o-mini'},
+  siliconflow:{base:'https://api.siliconflow.cn/v1'}
+};
 let docs=J('er_docs',[]),cur=null,tab='syntax',curSent=null;
 
 // ---------- LLM ----------
 function hash(s){let h=5381;for(let i=0;i<s.length;i++)h=(h*33^s.charCodeAt(i))>>>0;return h.toString(36)}
+function endpoint(base){const b=cleanBase(base);return b+(/\/v\d+$/.test(b)?'':'/v1')+'/chat/completions'}
+async function chat(c,messages,maxTokens){
+  if(!c.key)throw new Error('请先在「设置」中填写 API Key');
+  if(!c.model)throw new Error('请填写模型名');
+  let r;
+  try{
+    const body={model:c.model,temperature:0.2,messages};
+    if(maxTokens)body.max_tokens=maxTokens;
+    r=await fetch(endpoint(c.base),{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+c.key},body:JSON.stringify(body)});
+  }catch{throw new Error('网络或跨域失败')}
+  if(!r.ok){
+    const map={401:'API Key 无效或与 Base URL 不匹配，请检查设置',402:'余额不足',429:'请求过多'};
+    throw new Error(map[r.status]||('请求失败（'+r.status+'）'));
+  }
+  let data;try{data=await r.json()}catch{throw new Error('请求失败（响应无效）')}
+  if(!data?.choices?.length)throw new Error('请求失败（响应无效）');
+  return (data.choices[0].message?.content||'').trim();
+}
 async function llm(prompt,sys){
   const c=cfg(),ck='er_c_'+hash(c.model+'|'+sys+'|'+prompt),hit=LS.getItem(ck);if(hit)return hit;
-  if(!c.key)throw new Error('请先在「设置」中填写 API Key');
-  const r=await fetch(c.base.replace(/\/+$/,'')+(/\/v\d+$/.test(c.base)?'':'/v1')+'/chat/completions',{method:'POST',
-    headers:{'Content-Type':'application/json',Authorization:'Bearer '+c.key},
-    body:JSON.stringify({model:c.model,temperature:0.2,messages:[{role:'system',content:sys},{role:'user',content:prompt}]})});
-  if(!r.ok)throw new Error('LLM 请求失败 '+r.status+': '+(await r.text()).slice(0,200));
-  const out=(await r.json()).choices[0].message.content.trim();
+  const out=await chat(c,[{role:'system',content:sys},{role:'user',content:prompt}]);
   try{LS.setItem(ck,out)}catch{clearCache();try{LS.setItem(ck,out)}catch{}}
   return out;
 }
@@ -32,11 +55,18 @@ const SYS={
 function splitSent(p){return (p.match(/[^.!?。！？]+(?:[.!?。！？]+["'”’)\]]*|$)\s*/g)||[p]).map(s=>s.trim()).filter(Boolean)}
 function toParas(t){return t.replace(/\r/g,'').split(/\n\s*\n|\n(?=\s{2,}|\t)/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean).flatMap(p=>p.length>1500?chunk(p):[p])}
 function chunk(p){const s=splitSent(p),o=[];let b='';for(const x of s){if((b+x).length>800&&b){o.push(b.trim());b=''}b+=x+' '}if(b.trim())o.push(b.trim());return o}
+function isOnlyUrl(text){const s=String(text||'').trim();if(!s||/\s/.test(s))return false;try{const u=new URL(s);return u.protocol==='http:'||u.protocol==='https:'}catch{return false}}
+const URL_HINT='无法直接读取链接内容，请复制帖子正文粘贴';
 function addDoc(title,text){
-  let ps=toParas(text);if(!ps.length){alert('没有可导入的文本');return}
+  if(isOnlyUrl(text)){
+    if($('#dlgImport').open)$('#impMsg').textContent=URL_HINT;
+    else alert(URL_HINT);
+    return false;
+  }
+  let ps=toParas(text);if(!ps.length){alert('没有可导入的文本');return false}
   if(ps.length===1&&text.includes('\n'))ps=text.split('\n').map(x=>x.trim()).filter(Boolean);
   const d={id:Date.now().toString(36),title:(title||ps[0].slice(0,30)).trim(),paras:ps.map(splitSent)};
-  docs.unshift(d);saveDocs();open(d.id);
+  docs.unshift(d);saveDocs();open(d.id);return true;
 }
 function saveDocs(){try{S('er_docs',docs)}catch{alert('本地存储已满，请删除部分文档或清除缓存')}}
 async function parseEpub(buf){
@@ -127,16 +157,44 @@ $('#pop').addEventListener('click',()=>$('#pop').hidden=true);
 document.querySelectorAll('#side nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#side nav button').forEach(x=>x.classList.toggle('on',x===b));tab=b.dataset.tab;fillSide()});
 $('#docSel').onchange=e=>{curSent=null;fillSide();open(e.target.value)};
 $('#btnImport').onclick=()=>{$('#impMsg').textContent='';$('#dlgImport').showModal()};
-$('#impOk').onclick=()=>{const t=$('#paste').value;if(!t.trim())return;addDoc($('#title').value,t);$('#paste').value=$('#title').value='';$('#dlgImport').close()};
+$('#impOk').onclick=()=>{const t=$('#paste').value;if(!t.trim())return;if(!addDoc($('#title').value,t))return;$('#paste').value=$('#title').value='';$('#dlgImport').close()};
 $('#impDel').onclick=()=>{if(!cur||!confirm('删除「'+cur.title+'」？'))return;LS.removeItem('er_hl_'+cur.id);docs=docs.filter(d=>d!==cur);saveDocs();open(docs[0]?.id);$('#dlgImport').close()};
 $('#file').onchange=async e=>{const f=e.target.files[0];if(!f)return;$('#impMsg').textContent='解析中…';
-  try{if(/\.epub$/i.test(f.name)){const r=await parseEpub(await f.arrayBuffer());addDoc(r.title,r.text)}else addDoc(f.name.replace(/\.txt$/i,''),await f.text());$('#dlgImport').close()}
+  try{const parsed=/\.epub$/i.test(f.name)?await parseEpub(await f.arrayBuffer()):{title:f.name.replace(/\.txt$/i,''),text:await f.text()};if(addDoc(parsed.title,parsed.text))$('#dlgImport').close()}
   catch(x){$('#impMsg').textContent='导入失败：'+x.message}e.target.value=''};
-$('#btnSet').onclick=()=>{const c=cfg();$('#sBase').value=c.base;$('#sModel').value=c.model;$('#sKey').value=c.key;$('#sDict').checked=c.dict;$('#dlgSet').showModal()};
-$('#setOk').onclick=()=>{S('er_cfg',{base:$('#sBase').value.trim()||'https://api.deepseek.com',model:$('#sModel').value.trim()||'deepseek-chat',key:$('#sKey').value.trim(),dict:$('#sDict').checked});$('#dlgSet').close();if(cur)open(cur.id)};
+function matchPreset(base){const b=cleanBase(base).toLowerCase();return Object.keys(PRESETS).find(id=>cleanBase(PRESETS[id].base).toLowerCase()===b)||'custom'}
+function readForm(){
+  const base=cleanBase($('#sBase').value)||'https://api.deepseek.com';
+  let model=cleanModel($('#sModel').value);
+  if(!model&&$('#sPreset').value!=='siliconflow')model='deepseek-chat';
+  const c={base,model,key:cleanKey($('#sKey').value),dict:$('#sDict').checked};
+  $('#sBase').value=c.base;$('#sKey').value=c.key;if(model)$('#sModel').value=model;
+  return c;
+}
+function fillSet(){
+  const c=cfg();$('#sBase').value=c.base;$('#sModel').value=c.model;$('#sKey').value=c.key;$('#sDict').checked=c.dict;$('#sPreset').value=matchPreset(c.base);$('#setMsg').textContent='';
+}
+$('#sPreset').onchange=()=>{
+  const p=PRESETS[$('#sPreset').value];$('#setMsg').textContent='';if(!p)return;
+  $('#sBase').value=p.base;
+  if(p.model)$('#sModel').value=p.model;
+  else if(/^(deepseek-chat|gpt-4o-mini)$/.test($('#sModel').value))$('#sModel').value='';
+};
+$('#sBase').oninput=()=>{$('#sPreset').value=matchPreset($('#sBase').value)};
+$('#btnSet').onclick=()=>{fillSet();$('#dlgSet').showModal()};
+$('#setOk').onclick=()=>{const c=readForm();if(!c.model){$('#setMsg').textContent='请填写模型名';return}S('er_cfg',c);$('#dlgSet').close();if(cur)open(cur.id)};
+$('#btnTest').onclick=async()=>{
+  const msg=$('#setMsg'),btn=$('#btnTest'),c=readForm();
+  if(!c.key){msg.textContent='请先填写 API Key';return}
+  if(!c.model){msg.textContent='请填写模型名';return}
+  btn.disabled=true;msg.textContent='测试中…';
+  try{await chat(c,[{role:'user',content:'ping'}],1);msg.textContent='连接成功'}
+  catch(e){msg.textContent=e.message}
+  finally{btn.disabled=false}
+};
 $('#clrCache').onclick=()=>{clearCache();alert('已清除缓存')};
 
 // ---------- boot ----------
 (function(){const q=new URLSearchParams(location.search),t=q.get('text');
-  if(t){addDoc(q.get('title')||'',t);history.replaceState(null,'',location.pathname)}else{renderSel();open(J('er_last',null)||docs[0]?.id)}
+  if(t){const ok=addDoc(q.get('title')||'',t);history.replaceState(null,'',location.pathname);if(!ok){renderSel();open(J('er_last',null)||docs[0]?.id)}}else{renderSel();open(J('er_last',null)||docs[0]?.id)}
   if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});})();
